@@ -6,23 +6,42 @@ FastAPI service implementing the SkyBus API contract (`../docs/API_CONTRACT.md`)
 
 ```
 app/
-  main.py             app factory + lifespan (cache, db, workers)
+  main.py             app factory + lifespan (cache, db, workers, event detectors)
   core/               config, cache (Redis w/ in-memory fallback), db, rate limiting,
                       symbol registry, shared live state (WS ticks, depth, trades)
+  intelligence/       SHARED facade — the one calculation path used by both the
+                      public dashboard routes and the agent API
+  agentapi/           machine-consumption namespace /api/v1/agent: auth (API keys,
+                      scopes, per-key rate limits, audit), versioned envelopes,
+                      request-ID middleware, REST routers, WS event stream
+  events/             CloudEvents-inspired event model, durable bus (Redis Streams
+                      w/ in-memory fallback), 16 detectors, replay
   models/             SQLAlchemy schema (TimescaleDB hypertables for time series)
   schemas/            pydantic request/response docs models
   services/           upstream clients: coingecko, binance (REST+WS), bybit (REST+WS),
                       alternative.me fear&greed, dexscreener, defillama, coinglass
                       (optional premium), news/ (newsdata, gnews, rss + aggregator)
-  engines/            pressure (taker flow/CVD/imbalance), liquidity (walls, heatmap,
-                      labelled estimated liquidation clusters), scenarios (rule-based),
+  engines/            pressure (taker flow/CVD/imbalance/volume acceleration),
+                      liquidity (walls, sweeps, withdrawals, heatmap, labelled
+                      estimated liquidation clusters), scenarios v1 (dashboard) +
+                      scenarios_v2 (8 types, regime, contradicting evidence),
+                      crossproduct (venue comparison, BTC/ETH divergence),
+                      contract_norm (linear/inverse normalization),
                       sentiment (proprietary composite), categorizer (news)
   workers/            ingestor (WS supervisors), pollers (market/news/derivatives),
                       alerts (rule evaluator w/ cooldowns + dedupe)
-  api/routers/        market, coins, news, alerts, system (/health, /ws)
-alembic/              migrations (0001 creates schema + hypertables)
-tests/                offline pytest suite (engines + API shapes)
+  api/routers/        market, coins (thin wrappers over intelligence/), news,
+                      alerts, system (/health, /ws)
+alembic/              migrations (0001 schema + hypertables; 0002 agent_audit)
+tests/                offline pytest suite (engines, events, detectors, agent API)
 ```
+
+## Agent API & event stream
+
+Machine consumers (GT Quant) use the authenticated namespace `/api/v1/agent/`
+(API keys via `AGENT_API_KEYS` in `.env`) and the durable event stream
+`/api/v1/agent/stream` (Redis Streams + replay). The full contract is in
+`../docs/AGENT_CONTRACT.md`; integration guide in `../docs/GTQUANT_INTEGRATION.md`.
 
 ## Run
 

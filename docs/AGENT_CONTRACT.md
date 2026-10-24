@@ -94,12 +94,24 @@ Server → client messages:
 ```
 
 Durability: events are appended to a Redis Stream (`skybus:events`, MAXLEN ~10k,
-approximate trimming) — NOT pub/sub. Replay uses `XRANGE`/`XREAD` from
+approximate trimming) — NOT pub/sub. Replay uses `XREVRANGE`/`XRANGE` from
 `last_event_id`. When Redis is unavailable, an in-process ring buffer (5k) is
 used and `event_stream.backend` reports `"memory"` — replay then covers only
 process lifetime, and consumers can detect this via `/system/health`.
 Ordering: stream IDs (time-ordered) per server; idempotency via `idempotency_key`
 (also the dedupe key consumers should keep for ≥24h).
+
+Cursor direction semantics (important):
+
+- **WS `last_event_id`** = gap recovery: replays events *newer than* the id
+  (exclusive), oldest-first, then continues live. No duplicates, no silent gaps.
+- **REST `GET /events?cursor=`** = backwards pagination: `cursor` is the
+  `stream_id` of the last item of the previous page; the next page contains
+  *older* events, newest-first.
+
+Auth failures on the WS close the socket with close code **4401** (the server
+accepts first so the code survives; missing/invalid key or missing `stream`
+scope both yield 4401).
 
 ### AgentEvent (CloudEvents-inspired)
 

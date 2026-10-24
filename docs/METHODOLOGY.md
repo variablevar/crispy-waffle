@@ -90,3 +90,24 @@ docs state this limitation rather than inventing performance numbers.
 DEX pool liquidity (DEX Screener / DefiLlama / GeckoTerminal) is structurally different
 from centralized order-book depth. The UI keeps them in separate panels and never sums
 them into one "liquidity" number.
+
+## 9. Event detectors (agent stream)
+
+The agent event stream (`/api/v1/agent/stream`) is produced by deterministic detectors
+running over the same LiveState/caches as the REST API — never from simulated inputs:
+
+- Funding extremes, OI spikes, long/short ratios come from the derivatives poller cache.
+- CVD divergence and taker-flow shifts come from observed exchange trades.
+- Zone approach/breach/cross events compare live prices against the liquidity engine's
+  zones; zones derived from the estimation model stay labelled `ESTIMATED` in event
+  measurements (`measurements.estimated`), separate from `measurements.observed`.
+- Liquidation bursts fire only from exchange force-order streams; where no feed exists,
+  no event is ever synthesized.
+- `DATA_STALE` / `DATA_RECOVERED` report the health of SkyBus's own feeds.
+- `SCENARIO_CREATED` / `SCENARIO_INVALIDATED` are diffs of consecutive ScenarioV2
+  engine outputs; the first pass after startup is a silent baseline (no event flood).
+
+Events are persisted to a Redis Stream (durable, replayable, MAXLEN-trimmed) with an
+in-process ring-buffer fallback that is explicitly reported via
+`GET /api/v1/agent/system/health` (`event_stream.backend`). Idempotency keys make
+repeat delivery safe for consumers.

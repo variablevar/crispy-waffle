@@ -100,9 +100,36 @@ async def consume():
 
 ## 7. MCP server (optional)
 
-`mcp-server/` exposes the same intelligence as MCP tools for LLM agents
-(read-only). Configure `SKYBUS_BASE_URL` + `SKYBUS_API_KEY` in its environment;
-see `mcp-server/README.md`.
+`mcp-server/` exposes the same intelligence as 8 read-only MCP tools for LLM
+agents (`get_market_overview`, `get_asset_snapshot`, `get_latest_news`,
+`get_liquidity_zones`, `get_derivatives_context`, `get_market_scenarios`,
+`compare_exchange_signals`, `explain_market_event`). It proxies the agent REST
+API via `skybus-client` (or plain httpx fallback) — no indicator
+recalculation, no DB access, no shell, no trading.
+
+```bash
+cd mcp-server && python3.11 -m venv .venv
+.venv/bin/pip install -e . && .venv/bin/pip install -e ../skybus-client
+```
+
+MCP client config (e.g. Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "skybus": {
+      "command": "/path/to/skybus/mcp-server/.venv/bin/python",
+      "args": ["-m", "skybus_mcp"],
+      "env": {
+        "SKYBUS_BASE_URL": "http://localhost:8123",
+        "SKYBUS_API_KEY": "<agent key from AGENT_API_KEYS>"
+      }
+    }
+  }
+}
+```
+
+See `mcp-server/README.md` for the full tool table and security notes.
 
 ## 8. Error handling
 
