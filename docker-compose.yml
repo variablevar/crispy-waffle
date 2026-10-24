@@ -1,0 +1,68 @@
+name: skybus
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skybus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skybus_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-skybus}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-skybus}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-skybus}:${POSTGRES_PASSWORD:-skybus_dev_password}@db:5432/${POSTGRES_DB:-skybus}
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the Next.js build (rewrites are build-time); inside the
+        # compose network the backend is reachable as http://backend:8000.
+        BACKEND_INTERNAL_URL: http://backend:8000
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8000
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:${BACKEND_PORT:-8000}
+      # Server-side only: lets the dashboard show the agent event feed.
+      AGENT_API_KEY: ${AGENT_API_KEY:-}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
